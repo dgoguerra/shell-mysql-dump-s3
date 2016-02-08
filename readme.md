@@ -14,7 +14,7 @@ it should be available through most user's path.
 
 ### Example usage
 
-To avoid giving credentials to the script, you can setup your
+To avoid giving MySQL credentials to the script, you can setup your
 `~/.my.cnf` file:
 
 ```
@@ -27,15 +27,21 @@ user = db_user
 password = db_password
 ```
 
+You will also need to setup the AWS command credentials by running:
+
+```
+aws configure
+```
+
 Having done that, a basic use of the script is:
 
 ```sh
 mysql-dump-s3.sh --database db_name --s3-bucket bucket_name --s3-folder /backups/
 ```
 
-Alternatively, credentials can be passed to the script. Basically, the argument
-passed to the `--dump-extra-args` option will be passed to `mysqldump` as extra
-arguments:
+Alternatively, MySQL credentials can be passed to the script. Basically, the
+argument passed to the `--dump-extra-args` option will be passed to `mysqldump` as
+extra arguments:
 
 ```sh
 mysql-dump-s3.sh \
@@ -62,3 +68,7 @@ mysql-dump-s3.sh \
     # remove files in the dumps folder older than 10 days
     --rm-dumps-older-than 10
 ```
+
+### License
+
+MIT license - http://www.opensource.org/licenses/mit-license.php
