@@ -72,7 +72,7 @@ usage() {
 
 errorExit() {
     local message="$1"
-    echo "error: $message. Rerun with '--help' to see the available options." > /dev/stderr
+    echo "error: $message. Rerun with '--help' to see the available options." 1>&2
     exit 1
 }
 
