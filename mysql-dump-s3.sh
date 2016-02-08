@@ -9,10 +9,8 @@ readonly ARGS="$@"
 # Arguments number
 readonly ARGNUM="$#"
 
-
 awsCmd="/usr/local/bin/aws"
 rmCmd="/bin/rm"
-
 
 usage() {
     echo
@@ -41,7 +39,9 @@ usage() {
     echo "Extra Options:"
     echo
     echo "  --dry-run"
-    echo "      Pretend to execute the actions, outputting the commands instead."
+    echo "      Option for debugging and testing the script with the given"
+    echo "      options before running it. Pretend to execute the actions,"
+    echo "      outputting the commands instead."
     echo
     echo "  --dump-extra-args <extra args>"
     echo "      Dump command extra arguments."
@@ -58,6 +58,11 @@ usage() {
     echo "  --preserve-all"
     echo "      Don't delete any temporary files after execution. This option"
     echo "      equals to using --preserve-raw-dump and --preserve-zip-dump."
+    echo
+    echo "  --rm-dumps-older-than"
+    echo "      To be used when --preserve-raw-dump or --preserve-zip-dump are"
+    echo "      set, it removes files in the dump folder older than the given"
+    echo "      amount of days before starting the dump."
     echo
     echo "  --"
     echo "      Do not interpret any more arguments as options."
@@ -120,6 +125,19 @@ copyToS3() {
     fi
 }
 
+removeFilesOlderThan() {
+    local folder="$1"
+    local olderThanDays="$2"
+
+    # find "$folder" -name '*.sql' -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
+
+    if [ "$dryRun" == "1" ]; then
+        echo "$rmCmd " $(find "$folder" -mtime "+$olderThanDays" | tr "\n" " ")
+    else
+        find "$folder" -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
+    fi
+}
+
 
 while [ "$#" -gt 0 ]
 do
@@ -161,6 +179,10 @@ do
     --preserve-all)
         preserveRaw="1"
         preserveZip="1"
+        ;;
+    --rm-dumps-older-than)
+        rmOldFiles="1"
+        rmOlderThanDays="$2"
         ;;
     --)
         break
@@ -213,6 +235,11 @@ makeFolderIfNotExists "$dumpFolder"
 # directory doesn't exist
 [ ! "$dryRun" == "1" ] && cd "$dumpFolder"
 
+# if the --rm-dumps-older-than option is set, cleanup the dumps folder
+# before starting with the current dump.
+if [ "$rmOldFiles" == "1" ]; then
+    removeFilesOlderThan "$dumpFolder" "$rmOlderThanDays"
+fi
 
 datetime=$(date +%Y%m%d_%H%M%S)
 dumpFilename="${outputPrefix}_${datetime}.sql"
