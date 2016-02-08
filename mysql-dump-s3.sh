@@ -157,10 +157,11 @@ removeFilesOlderThan() {
     if [ "$dryRun" == "1" ]; then
         # check if the folder exists first, it may not exist if we are running
         # with --dry-run
-        [ -d "$folder" ] && find "$folder" -mtime "+$olderThanDays" -exec "echo $rmCmd" {} \;
+        echo "find \"$folder\" -mtime \"+$olderThanDays\" -exec $rmCmd {} \;"
+        [ -d "$folder" ] && find "$folder" -mtime "+$olderThanDays" -exec echo $rmCmd {} \;
     else
-        # find "$folder" -name '*.sql' -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
-        find "$folder" -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
+        # find "$folder" -name '*.sql' -mtime "+$olderThanDays" -exec $rmCmd {} \;
+        find "$folder" -mtime "+$olderThanDays" -exec $rmCmd {} \;
     fi
 }
 
