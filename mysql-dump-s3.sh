@@ -16,7 +16,7 @@ usage() {
     echo
     echo "Dump a MySQL database, compress it and upload it to AWS S3."
     echo
-    echo "Usage: $PROGNAME -i <file> -o <file> [options]..."
+    echo "Usage: $PROGNAME --database <database> --s3-bucket <bucket> --s3-folder <folder> [options]..."
     echo
     echo "General Options:"
     echo
@@ -70,6 +70,17 @@ usage() {
 }
 
 
+errorExit() {
+    local message="$1"
+    echo "error: $message. Rerun with '--help' to see the available options." > /dev/stderr
+    exit 1
+}
+
+checkCmdExists() {
+    local cmd="$1"
+    command -v "$cmd" >/dev/null 2>&1 || errorExit "'$cmd' appears not to be installed. Aborting"
+}
+
 makeFolderIfNotExists() {
     local folder="$1"
 
@@ -108,20 +119,34 @@ compressFile() {
 # obtain the S3 bucket's region from its name
 getBucketRegion() {
     local bucketName="$1"
-
     "$awsCmd" s3api get-bucket-location --bucket $bucketName --output text
+}
+
+fullBucketPath() {
+    local $bucketName="$1"
+    local $bucketFolder="$2"
+
+    # prepend slash to the bucket folder if it wasn't there
+    if [[ ! "$bucketFolder" == "/"* ]]; then
+        bucketFolder="/$bucketFolder"
+    fi
+
+    echo "s3://${bucketName}${bucketFolder}"
 }
 
 # copy the compressed file to S3
 copyToS3() {
     local source="$1"
     local bucketName="$2"
-    local destFolder="$3"
+    local bucketRegion="$3"
+    local destFolder="$4"
+
+    bucketPath=$(fullBucketPath $bucketName $destFolder)
 
     if [ "$dryRun" == "1" ]; then
-        echo "$awsCmd s3 cp --region $(getBucketRegion $bucketName) \"$source\" \"s3://${bucketName}${destFolder}\""
+        echo "$awsCmd s3 cp --region \"$bucketRegion\" \"$source\" \"$bucketPath\""
     else
-        "$awsCmd" s3 cp --region $(getBucketRegion $bucketName) "$source" "s3://${bucketName}${destFolder}"
+        "$awsCmd" s3 cp --region "$bucketRegion" "$source" "$bucketPath"
     fi
 }
 
@@ -129,14 +154,20 @@ removeFilesOlderThan() {
     local folder="$1"
     local olderThanDays="$2"
 
-    # find "$folder" -name '*.sql' -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
-
     if [ "$dryRun" == "1" ]; then
-        echo "$rmCmd " $(find "$folder" -mtime "+$olderThanDays" | tr "\n" " ")
+        # check if the folder exists first, it may not exist if we are running
+        # with --dry-run
+        [ -d "$folder" ] && find "$folder" -mtime "+$olderThanDays" -exec "echo $rmCmd" {} \;
     else
+        # find "$folder" -name '*.sql' -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
         find "$folder" -mtime "+$olderThanDays" -exec "$rmCmd" {} \;
     fi
 }
+
+
+# before doing anything, check that some dependencies we are going to use exist
+checkCmdExists "$awsCmd"
+checkCmdExists mysqldump
 
 
 while [ "$#" -gt 0 ]
@@ -188,7 +219,7 @@ do
         break
         ;;
     -*)
-        echo "Invalid option '$1'. Use --help to see the valid options" >&2
+        echo "Invalid option '$1'. Rerun with '--help' to see the available options." >&2
         exit 1
         ;;
     # an option argument, continue
@@ -199,21 +230,20 @@ done
 
 
 if [ "$dbName" == "" ]; then
-    echo "error: database must be set" > /dev/stderr
-    usage
-    exit 0
+    errorExit "database must be set"
 fi
 
 if [ "$bucketName" == "" ]; then
-    echo "error: S3 bucket name must be set" > /dev/stderr
-    usage
-    exit 0
+    errorExit "S3 bucket name must be set"
 fi
 
 if [ "$bucketFolder" == "" ]; then
-    echo "error: S3 bucket output folder must be set" > /dev/stderr
-    usage
-    exit 0
+    errorExit "S3 bucket output folder must be set"
+fi
+
+
+if [ "$rmOldFiles" == 1 ] && [ "$rmOlderThanDays" == "" ]; then
+    errorExit "--rm-dumps-older-than requires the number of days as an argument"
 fi
 
 
@@ -222,9 +252,9 @@ if [ "$outputPrefix" == "" ]; then
     outputPrefix="$dbName"
 fi
 
-# if no dumps directory was given, default to /tmp
+# if no dumps directory was given, default to /tmp/mysql-dump-s3
 if [ "$dumpFolder" == "" ]; then
-    dumpFolder="/tmp"
+    dumpFolder="/tmp/mysql-dump-s3"
 fi
 
 # create the dumps directory if it doesn't exist...
@@ -233,7 +263,11 @@ makeFolderIfNotExists "$dumpFolder"
 # only actually move to the dumps folder if the script is not
 # being executed with --dry-run, to avoid cd failing if the
 # directory doesn't exist
-[ ! "$dryRun" == "1" ] && cd "$dumpFolder"
+if [ "$dryRun" == "1" ]; then
+    echo "cd \"$dumpFolder\""
+else
+    cd "$dumpFolder"
+fi
 
 # if the --rm-dumps-older-than option is set, cleanup the dumps folder
 # before starting with the current dump.
@@ -245,11 +279,13 @@ datetime=$(date +%Y%m%d_%H%M%S)
 dumpFilename="${outputPrefix}_${datetime}.sql"
 dumpZipFilename="$dumpFilename.tar.gz"
 
+bucketRegion=$(getBucketRegion "$bucketName") || errorExit "'$bucketName' bucket's region could not be retrieved. Aborting"
+
 dumpDb "$dbName" "$dumpFilename"
 
 compressFile "$dumpFilename" "$dumpZipFilename"
 
-copyToS3 "$dumpZipFilename" "$bucketName" "$bucketFolder"
+copyToS3 "$dumpZipFilename" "$bucketName" "$bucketRegion" "$bucketFolder"
 
 # unless the --preserve-raw-dump flag is set, delete the dumped file
 if [ ! "$preserveRaw" == "1" ] && [ ! "$dryRun" == "1" ]; then
