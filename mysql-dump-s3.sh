@@ -123,8 +123,8 @@ getBucketRegion() {
 }
 
 fullBucketPath() {
-    local $bucketName="$1"
-    local $bucketFolder="$2"
+    local bucketName="$1"
+    local bucketFolder="$2"
 
     # prepend slash to the bucket folder if it wasn't there
     if [[ ! "$bucketFolder" == "/"* ]]; then
