@@ -98,9 +98,9 @@ dumpDb() {
     local output="$2"
 
     if [ "$dryRun" == "1" ]; then
-        echo "mysqldump configtool $dumpExtraArgs --single-transaction > \"$output\""
+        echo "mysqldump $dbName $dumpExtraArgs --single-transaction > \"$output\""
     else
-        mysqldump configtool $dumpExtraArgs --single-transaction > "$output"
+        mysqldump $dbName $dumpExtraArgs --single-transaction > "$output"
     fi
 }
 
